@@ -6,6 +6,7 @@ from hashlib import sha256
 
 st.set_page_config(page_title="Diabetes Management App", layout="wide")
 
+# Session State
 if "users" not in st.session_state:
     st.session_state.users = {}
 if "logged_in" not in st.session_state:
@@ -17,6 +18,7 @@ if "glucose_data" not in st.session_state:
 if "meals" not in st.session_state:
     st.session_state.meals = []
 
+# Helpers
 def hash_pw(pw):
     return sha256(pw.encode()).hexdigest()
 
@@ -30,6 +32,7 @@ def classify_glucose(value):
     else:
         return "Critical"
 
+# Auth
 def auth():
     st.title("🔐 Login / Signup")
     choice = st.radio("Select", ["Login", "Signup"])
@@ -59,6 +62,7 @@ def auth():
             else:
                 st.error("Invalid credentials")
 
+# Dashboard
 def dashboard(user):
     st.title("📊 Dashboard")
 
@@ -75,6 +79,7 @@ def dashboard(user):
         fig = px.bar(mdf, x="meal", y="sugar", title="Sugar Intake")
         st.plotly_chart(fig)
 
+# Main App
 def app():
     user = st.session_state.current_user
     st.sidebar.title("Menu")
@@ -117,6 +122,7 @@ def app():
         st.session_state.logged_in = False
         st.session_state.current_user = None
 
+# Run
 if not st.session_state.logged_in:
     auth()
 else:
