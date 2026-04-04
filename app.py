@@ -1,157 +1,123 @@
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 from datetime import datetime
+from hashlib import sha256
 
-# ---------------------------
-# SESSION STATE INIT
-# ---------------------------
+st.set_page_config(page_title="Diabetes Management App", layout="wide")
+
 if "users" not in st.session_state:
     st.session_state.users = {}
-
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
-
 if "current_user" not in st.session_state:
     st.session_state.current_user = None
-
 if "glucose_data" not in st.session_state:
     st.session_state.glucose_data = []
-
 if "meals" not in st.session_state:
     st.session_state.meals = []
 
-# ---------------------------
-# HELPER FUNCTIONS
-# ---------------------------
+def hash_pw(pw):
+    return sha256(pw.encode()).hexdigest()
+
 def classify_glucose(value):
     if value < 70:
         return "Low"
-    elif 70 <= value <= 140:
+    elif value <= 140:
         return "Normal"
-    elif 140 < value <= 200:
+    elif value <= 200:
         return "High"
     else:
         return "Critical"
 
-# ---------------------------
-# LOGIN / SIGNUP PAGE
-# ---------------------------
-def auth_page():
-    st.title("🔐 Diabetes App Login")
-
-    option = st.radio("Select Option", ["Login", "Signup"])
+def auth():
+    st.title("🔐 Login / Signup")
+    choice = st.radio("Select", ["Login", "Signup"])
 
     username = st.text_input("Username")
     password = st.text_input("Password", type="password")
 
-    if option == "Signup":
-        role = st.selectbox("Select Role", ["Patient", "Doctor", "Caregiver"])
-
+    if choice == "Signup":
+        role = st.selectbox("Role", ["Patient", "Doctor", "Caregiver"])
         if st.button("Create Account"):
             if username in st.session_state.users:
-                st.error("User already exists!")
+                st.error("User exists")
             else:
                 st.session_state.users[username] = {
-                    "password": password,
+                    "password": hash_pw(password),
                     "role": role
                 }
-                st.success("Account created! Please login.")
+                st.success("Account created")
 
-    else:
+    if choice == "Login":
         if st.button("Login"):
             user = st.session_state.users.get(username)
-            if user and user["password"] == password:
+            if user and user["password"] == hash_pw(password):
                 st.session_state.logged_in = True
                 st.session_state.current_user = username
-                st.success("Logged in successfully!")
+                st.success("Logged in")
             else:
                 st.error("Invalid credentials")
 
-# ---------------------------
-# DASHBOARD
-# ---------------------------
-def dashboard():
+def dashboard(user):
+    st.title("📊 Dashboard")
+
+    gdf = pd.DataFrame(st.session_state.glucose_data)
+    mdf = pd.DataFrame(st.session_state.meals)
+
+    if not gdf.empty:
+        gdf = gdf[gdf["user"] == user]
+        fig = px.line(gdf, x="time", y="value", title="Glucose Trend")
+        st.plotly_chart(fig)
+
+    if not mdf.empty:
+        mdf = mdf[mdf["user"] == user]
+        fig = px.bar(mdf, x="meal", y="sugar", title="Sugar Intake")
+        st.plotly_chart(fig)
+
+def app():
     user = st.session_state.current_user
-    role = st.session_state.users[user]["role"]
+    st.sidebar.title("Menu")
+    choice = st.sidebar.radio("Go to", ["Dashboard", "Glucose", "Meals", "Profile", "Logout"])
 
-    st.title(f"🏥 Welcome {user} ({role})")
+    if choice == "Dashboard":
+        dashboard(user)
 
-    menu = st.sidebar.selectbox("Menu", [
-        "Glucose Tracking",
-        "Meal Tracking",
-        "Profile"
-    ])
-
-    if menu == "Glucose Tracking":
-        st.header("📊 Blood Glucose Tracking")
-
-        glucose = st.number_input("Enter Glucose Level (mg/dL)", min_value=0)
-
-        if st.button("Save Reading"):
-            category = classify_glucose(glucose)
+    elif choice == "Glucose":
+        st.header("Glucose Tracking")
+        val = st.number_input("Glucose", min_value=0)
+        if st.button("Save"):
+            cat = classify_glucose(val)
             st.session_state.glucose_data.append({
                 "user": user,
-                "value": glucose,
-                "category": category,
+                "value": val,
+                "category": cat,
                 "time": datetime.now()
             })
+            st.success(f"Saved ({cat})")
 
-            st.success(f"Saved! Category: {category}")
-
-            if category == "Critical":
-                st.warning("⚠️ Visit a doctor immediately!")
-
-        df = pd.DataFrame(st.session_state.glucose_data)
-        if not df.empty:
-            st.subheader("📈 History")
-            st.dataframe(df[df["user"] == user])
-
-    elif menu == "Meal Tracking":
-        st.header("🍽️ Meal & Nutrition")
-
-        meal = st.text_input("Meal Name")
-        calories = st.number_input("Calories", min_value=0)
-        sugar = st.number_input("Sugar (g)", min_value=0)
-
+    elif choice == "Meals":
+        st.header("Meal Tracking")
+        meal = st.text_input("Meal")
+        sugar = st.number_input("Sugar", min_value=0)
         if st.button("Save Meal"):
             st.session_state.meals.append({
                 "user": user,
                 "meal": meal,
-                "calories": calories,
                 "sugar": sugar,
                 "time": datetime.now()
             })
-            st.success("Meal saved!")
+            st.success("Saved")
 
-        df = pd.DataFrame(st.session_state.meals)
-        if not df.empty:
-            st.subheader("🍴 Meal History")
-            st.dataframe(df[df["user"] == user])
+    elif choice == "Profile":
+        st.header("Profile")
+        st.write("User:", user)
 
-    elif menu == "Profile":
-        st.header("👤 Profile")
+    elif choice == "Logout":
+        st.session_state.logged_in = False
+        st.session_state.current_user = None
 
-        age = st.number_input("Age", min_value=0)
-        height = st.number_input("Height (cm)", min_value=0)
-        weight = st.number_input("Weight (kg)", min_value=0)
-        gender = st.selectbox("Gender", ["Male", "Female", "Other"])
-
-        if st.button("Save Profile"):
-            st.session_state.users[user]["profile"] = {
-                "age": age,
-                "height": height,
-                "weight": weight,
-                "gender": gender
-            }
-            st.success("Profile updated!")
-
-        if "profile" in st.session_state.users[user]:
-            st.write(st.session_state.users[user]["profile"])
-
-# ---------------------------
-# MAIN APP
-# ---------------------------
 if not st.session_state.logged_in:
-    auth_page()
+    auth()
 else:
-    dashboard()
+    app()
