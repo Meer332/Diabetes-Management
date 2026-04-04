@@ -1,0 +1,6 @@
+streamlit
+pandas
+numpy
+firebase-admin
+pymongo
+python-dotenv
