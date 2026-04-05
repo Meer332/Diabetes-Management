@@ -2,37 +2,46 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from datetime import datetime
-from hashlib import sha256
+import json
+import os
 
 st.set_page_config(page_title="Diabetes Management App", layout="wide")
 
-# Session State
-if "users" not in st.session_state:
-    st.session_state.users = {}
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
-if "current_user" not in st.session_state:
-    st.session_state.current_user = None
-if "glucose_data" not in st.session_state:
-    st.session_state.glucose_data = []
-if "meals" not in st.session_state:
-    st.session_state.meals = []
+# -----------------------
+# FILE STORAGE (simple DB)
+# -----------------------
+DATA_FILE = "data.json"
 
-# Helpers
-def hash_pw(pw):
-    return sha256(pw.encode()).hexdigest()
+def load_data():
+    if not os.path.exists(DATA_FILE):
+        return {"users": {}, "glucose": [], "meals": []}
+    with open(DATA_FILE, "r") as f:
+        return json.load(f)
 
-def classify_glucose(value):
-    if value < 70:
-        return "Low"
-    elif value <= 140:
-        return "Normal"
-    elif value <= 200:
-        return "High"
-    else:
-        return "Critical"
+def save_data(data):
+    with open(DATA_FILE, "w") as f:
+        json.dump(data, f)
 
-# Auth
+data = load_data()
+
+# -----------------------
+# SESSION
+# -----------------------
+if "user" not in st.session_state:
+    st.session_state.user = None
+
+# -----------------------
+# HELPERS
+# -----------------------
+def classify_glucose(v):
+    if v < 70: return "Low"
+    elif v <= 140: return "Normal"
+    elif v <= 200: return "High"
+    else: return "Critical"
+
+# -----------------------
+# AUTH
+# -----------------------
 def auth():
     st.title("🔐 Login / Signup")
     choice = st.radio("Select", ["Login", "Signup"])
@@ -41,89 +50,93 @@ def auth():
     password = st.text_input("Password", type="password")
 
     if choice == "Signup":
-        role = st.selectbox("Role", ["Patient", "Doctor", "Caregiver"])
         if st.button("Create Account"):
-            if username in st.session_state.users:
+            if username in data["users"]:
                 st.error("User exists")
             else:
-                st.session_state.users[username] = {
-                    "password": hash_pw(password),
-                    "role": role
-                }
+                data["users"][username] = {"password": password}
+                save_data(data)
                 st.success("Account created")
 
     if choice == "Login":
         if st.button("Login"):
-            user = st.session_state.users.get(username)
-            if user and user["password"] == hash_pw(password):
-                st.session_state.logged_in = True
-                st.session_state.current_user = username
+            user = data["users"].get(username)
+            if user and user["password"] == password:
+                st.session_state.user = username
                 st.success("Logged in")
             else:
                 st.error("Invalid credentials")
 
-# Dashboard
+# -----------------------
+# DASHBOARD
+# -----------------------
 def dashboard(user):
     st.title("📊 Dashboard")
 
-    gdf = pd.DataFrame(st.session_state.glucose_data)
-    mdf = pd.DataFrame(st.session_state.meals)
+    gdf = pd.DataFrame(data["glucose"])
+    mdf = pd.DataFrame(data["meals"])
 
     if not gdf.empty:
         gdf = gdf[gdf["user"] == user]
-        fig = px.line(gdf, x="time", y="value", title="Glucose Trend")
-        st.plotly_chart(fig)
+        st.plotly_chart(px.line(gdf, x="time", y="value", title="Glucose Trend"))
+
+    else:
+        st.info("No glucose data yet")
 
     if not mdf.empty:
         mdf = mdf[mdf["user"] == user]
-        fig = px.bar(mdf, x="meal", y="sugar", title="Sugar Intake")
-        st.plotly_chart(fig)
+        st.plotly_chart(px.bar(mdf, x="meal", y="sugar", title="Sugar Intake"))
+    else:
+        st.info("No meal data yet")
 
-# Main App
+# -----------------------
+# MAIN APP
+# -----------------------
 def app():
-    user = st.session_state.current_user
-    st.sidebar.title("Menu")
-    choice = st.sidebar.radio("Go to", ["Dashboard", "Glucose", "Meals", "Profile", "Logout"])
+    user = st.session_state.user
+    st.sidebar.title(f"Welcome {user}")
 
-    if choice == "Dashboard":
+    page = st.sidebar.radio("Menu", ["Dashboard", "Glucose", "Meals", "Logout"])
+
+    if page == "Dashboard":
         dashboard(user)
 
-    elif choice == "Glucose":
+    elif page == "Glucose":
         st.header("Glucose Tracking")
         val = st.number_input("Glucose", min_value=0)
+
         if st.button("Save"):
-            cat = classify_glucose(val)
-            st.session_state.glucose_data.append({
+            data["glucose"].append({
                 "user": user,
                 "value": val,
-                "category": cat,
-                "time": datetime.now()
+                "category": classify_glucose(val),
+                "time": str(datetime.now())
             })
-            st.success(f"Saved ({cat})")
+            save_data(data)
+            st.success("Saved")
 
-    elif choice == "Meals":
+    elif page == "Meals":
         st.header("Meal Tracking")
         meal = st.text_input("Meal")
         sugar = st.number_input("Sugar", min_value=0)
+
         if st.button("Save Meal"):
-            st.session_state.meals.append({
+            data["meals"].append({
                 "user": user,
                 "meal": meal,
                 "sugar": sugar,
-                "time": datetime.now()
+                "time": str(datetime.now())
             })
+            save_data(data)
             st.success("Saved")
 
-    elif choice == "Profile":
-        st.header("Profile")
-        st.write("User:", user)
+    elif page == "Logout":
+        st.session_state.user = None
 
-    elif choice == "Logout":
-        st.session_state.logged_in = False
-        st.session_state.current_user = None
-
-# Run
-if not st.session_state.logged_in:
+# -----------------------
+# RUN
+# -----------------------
+if st.session_state.user is None:
     auth()
 else:
     app()
