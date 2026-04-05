@@ -5,10 +5,30 @@ from datetime import datetime
 import json
 import os
 
-st.set_page_config(page_title="Diabetes Management App", layout="wide")
+st.set_page_config(page_title="Diabetes App", layout="wide")
 
 # -----------------------
-# FILE STORAGE (simple DB)
+# STYLE (UI IMPROVEMENT)
+# -----------------------
+st.markdown("""
+    <style>
+    .main {background-color: #0E1117;}
+    .card {
+        padding: 20px;
+        border-radius: 15px;
+        background-color: #1c1f26;
+        margin-bottom: 20px;
+    }
+    .title {
+        font-size: 28px;
+        font-weight: bold;
+        color: #4CAF50;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# -----------------------
+# DATA FILE
 # -----------------------
 DATA_FILE = "data.json"
 
@@ -33,92 +53,112 @@ if "user" not in st.session_state:
 # -----------------------
 # HELPERS
 # -----------------------
-def classify_glucose(v):
+def classify(v):
     if v < 70: return "Low"
     elif v <= 140: return "Normal"
     elif v <= 200: return "High"
     else: return "Critical"
 
 # -----------------------
-# AUTH
+# AUTH PAGE
 # -----------------------
 def auth():
-    st.title("🔐 Login / Signup")
-    choice = st.radio("Select", ["Login", "Signup"])
+    st.markdown("<div class='title'>Diabetes Manager</div>", unsafe_allow_html=True)
 
-    username = st.text_input("Username")
-    password = st.text_input("Password", type="password")
+    col1, col2 = st.columns(2)
 
-    if choice == "Signup":
-        if st.button("Create Account"):
-            if username in data["users"]:
-                st.error("User exists")
-            else:
-                data["users"][username] = {"password": password}
-                save_data(data)
-                st.success("Account created")
+    with col1:
+        st.subheader("Login")
+        u = st.text_input("Username")
+        p = st.text_input("Password", type="password")
 
-    if choice == "Login":
         if st.button("Login"):
-            user = data["users"].get(username)
-            if user and user["password"] == password:
-                st.session_state.user = username
-                st.success("Logged in")
+            user = data["users"].get(u)
+            if user and user["password"] == p:
+                st.session_state.user = u
             else:
-                st.error("Invalid credentials")
+                st.error("Invalid")
+
+    with col2:
+        st.subheader("Signup")
+        u2 = st.text_input("New Username")
+        p2 = st.text_input("New Password", type="password")
+
+        if st.button("Create"):
+            if u2 in data["users"]:
+                st.error("Exists")
+            else:
+                data["users"][u2] = {"password": p2}
+                save_data(data)
+                st.success("Created")
 
 # -----------------------
 # DASHBOARD
 # -----------------------
 def dashboard(user):
-    st.title("📊 Dashboard")
+    st.markdown("<div class='title'>Dashboard</div>", unsafe_allow_html=True)
 
     gdf = pd.DataFrame(data["glucose"])
     mdf = pd.DataFrame(data["meals"])
 
-    if not gdf.empty:
-        gdf = gdf[gdf["user"] == user]
-        st.plotly_chart(px.line(gdf, x="time", y="value", title="Glucose Trend"))
+    col1, col2 = st.columns(2)
 
-    else:
-        st.info("No glucose data yet")
+    with col1:
+        st.markdown("<div class='card'>", unsafe_allow_html=True)
+        st.subheader("Glucose Trend")
 
-    if not mdf.empty:
-        mdf = mdf[mdf["user"] == user]
-        st.plotly_chart(px.bar(mdf, x="meal", y="sugar", title="Sugar Intake"))
-    else:
-        st.info("No meal data yet")
+        if not gdf.empty:
+            gdf = gdf[gdf["user"] == user]
+            st.plotly_chart(px.line(gdf, x="time", y="value"))
+        else:
+            st.info("No data")
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    with col2:
+        st.markdown("<div class='card'>", unsafe_allow_html=True)
+        st.subheader("Sugar Intake")
+
+        if not mdf.empty:
+            mdf = mdf[mdf["user"] == user]
+            st.plotly_chart(px.bar(mdf, x="meal", y="sugar"))
+        else:
+            st.info("No data")
+
+        st.markdown("</div>", unsafe_allow_html=True)
 
 # -----------------------
-# MAIN APP
+# APP
 # -----------------------
 def app():
     user = st.session_state.user
-    st.sidebar.title(f"Welcome {user}")
 
-    page = st.sidebar.radio("Menu", ["Dashboard", "Glucose", "Meals", "Logout"])
+    st.sidebar.title(f"👤 {user}")
+    page = st.sidebar.radio("", ["Dashboard", "Add Glucose", "Add Meal", "Logout"])
 
     if page == "Dashboard":
         dashboard(user)
 
-    elif page == "Glucose":
-        st.header("Glucose Tracking")
-        val = st.number_input("Glucose", min_value=0)
+    elif page == "Add Glucose":
+        st.subheader("Add Glucose")
+
+        val = st.number_input("Glucose")
 
         if st.button("Save"):
             data["glucose"].append({
                 "user": user,
                 "value": val,
-                "category": classify_glucose(val),
+                "category": classify(val),
                 "time": str(datetime.now())
             })
             save_data(data)
             st.success("Saved")
 
-    elif page == "Meals":
-        st.header("Meal Tracking")
+    elif page == "Add Meal":
+        st.subheader("Add Meal")
+
         meal = st.text_input("Meal")
-        sugar = st.number_input("Sugar", min_value=0)
+        sugar = st.number_input("Sugar")
 
         if st.button("Save Meal"):
             data["meals"].append({
